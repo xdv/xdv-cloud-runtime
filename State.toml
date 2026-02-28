@@ -1,0 +1,14 @@
+﻿# XDV Cloud Runtime Workspace Manifest
+
+[workspace]
+name = "xdv_cloud_runtime"
+version = "0.1.0"
+description = "Hybrid container runtime and domain-aware cloud control plane."
+
+[sector]
+name = "xdv_cloud_runtime"
+path = "src"
+
+[target.x64-pc-none]
+linker = "ld"
+linker_flags = ["-nostdlib", "-static"]
