@@ -1,0 +1,322 @@
+// File: cloud_contracts.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: XDV-043 normative constants and contract guards.
+
+forge XdvCloudRuntimeContracts {
+
+    const STATUS_OK: UInt32 = 0;
+    const STATUS_INVALID_TENANT: UInt32 = 1;
+    const STATUS_INVALID_DOMAIN: UInt32 = 2;
+    const STATUS_INVALID_CAPABILITY: UInt32 = 3;
+    const STATUS_INVALID_PROFILE: UInt32 = 4;
+    const STATUS_INVALID_POLICY: UInt32 = 5;
+    const STATUS_INVALID_STATE: UInt32 = 6;
+    const STATUS_INVALID_TRANSITION: UInt32 = 7;
+    const STATUS_ISOLATION_VIOLATION: UInt32 = 8;
+    const STATUS_POLICY_VIOLATION: UInt32 = 9;
+    const STATUS_ORDER_VIOLATION: UInt32 = 10;
+
+    const DOMAIN_K: UInt64 = 0;
+    const DOMAIN_Q: UInt64 = 1;
+    const DOMAIN_PHI: UInt64 = 2;
+
+    const PROFILE_K_ONLY: UInt64 = 1;
+    const PROFILE_KQ: UInt64 = 2;
+    const PROFILE_K_PHI: UInt64 = 3;
+    const PROFILE_FULL: UInt64 = 4;
+
+    const CAP_SCOPE_K: UInt64 = 1;
+    const CAP_SCOPE_Q: UInt64 = 2;
+    const CAP_SCOPE_PHI: UInt64 = 4;
+    const CAP_SCOPE_KQ: UInt64 = 3;
+    const CAP_SCOPE_K_PHI: UInt64 = 5;
+    const CAP_SCOPE_Q_PHI: UInt64 = 6;
+    const CAP_SCOPE_FULL: UInt64 = 7;
+
+    const POLICY_STRICT: UInt64 = 1;
+    const POLICY_BALANCED: UInt64 = 2;
+    const POLICY_PERFORMANCE: UInt64 = 3;
+
+    const STATE_CREATED: UInt64 = 1;
+    const STATE_SCHEDULED: UInt64 = 2;
+    const STATE_BOUND: UInt64 = 3;
+    const STATE_ACTIVE: UInt64 = 4;
+    const STATE_SUSPENDED: UInt64 = 5;
+    const STATE_TERMINATED: UInt64 = 6;
+    const STATE_RELEASED: UInt64 = 7;
+
+    const TENANT_ID_MIN: UInt64 = 1;
+    const TENANT_ID_MAX: UInt64 = 4095;
+
+    proc K::is_tenant_valid(tenant_id: UInt64) {
+        if tenant_id < TENANT_ID_MIN {
+            return STATUS_INVALID_TENANT;
+        } else {
+            if tenant_id > TENANT_ID_MAX {
+                return STATUS_INVALID_TENANT;
+            } else {
+                return STATUS_OK;
+            }
+        }
+    }
+
+    proc K::is_domain_valid(domain: UInt64) {
+        if domain == DOMAIN_K {
+            return STATUS_OK;
+        } else {
+            if domain == DOMAIN_Q {
+                return STATUS_OK;
+            } else {
+                if domain == DOMAIN_PHI {
+                    return STATUS_OK;
+                } else {
+                    return STATUS_INVALID_DOMAIN;
+                }
+            }
+        }
+    }
+
+    proc K::is_domain_profile_valid(profile: UInt64) {
+        if profile == PROFILE_K_ONLY {
+            return STATUS_OK;
+        } else {
+            if profile == PROFILE_KQ {
+                return STATUS_OK;
+            } else {
+                if profile == PROFILE_K_PHI {
+                    return STATUS_OK;
+                } else {
+                    if profile == PROFILE_FULL {
+                        return STATUS_OK;
+                    } else {
+                        return STATUS_INVALID_PROFILE;
+                    }
+                }
+            }
+        }
+    }
+
+    proc K::profile_requires_q(profile: UInt64) {
+        if profile == PROFILE_KQ {
+            return 1;
+        } else {
+            if profile == PROFILE_FULL {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    proc K::profile_requires_phi(profile: UInt64) {
+        if profile == PROFILE_K_PHI {
+            return 1;
+        } else {
+            if profile == PROFILE_FULL {
+                return 1;
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    proc K::is_capability_valid_for_profile(profile: UInt64, capability_scope: UInt64) {
+        let profile_valid = is_domain_profile_valid(profile);
+        if profile_valid == STATUS_OK {
+            if profile == PROFILE_K_ONLY {
+                if capability_scope == CAP_SCOPE_K {
+                    return STATUS_OK;
+                } else {
+                    if capability_scope == CAP_SCOPE_KQ {
+                        return STATUS_OK;
+                    } else {
+                        if capability_scope == CAP_SCOPE_K_PHI {
+                            return STATUS_OK;
+                        } else {
+                            if capability_scope == CAP_SCOPE_FULL {
+                                return STATUS_OK;
+                            } else {
+                                return STATUS_INVALID_CAPABILITY;
+                            }
+                        }
+                    }
+                }
+            } else {
+                if profile == PROFILE_KQ {
+                    if capability_scope == CAP_SCOPE_KQ {
+                        return STATUS_OK;
+                    } else {
+                        if capability_scope == CAP_SCOPE_FULL {
+                            return STATUS_OK;
+                        } else {
+                            return STATUS_INVALID_CAPABILITY;
+                        }
+                    }
+                } else {
+                    if profile == PROFILE_K_PHI {
+                        if capability_scope == CAP_SCOPE_K_PHI {
+                            return STATUS_OK;
+                        } else {
+                            if capability_scope == CAP_SCOPE_FULL {
+                                return STATUS_OK;
+                            } else {
+                                return STATUS_INVALID_CAPABILITY;
+                            }
+                        }
+                    } else {
+                        if profile == PROFILE_FULL {
+                            if capability_scope == CAP_SCOPE_FULL {
+                                return STATUS_OK;
+                            } else {
+                                return STATUS_INVALID_CAPABILITY;
+                            }
+                        } else {
+                            return STATUS_INVALID_PROFILE;
+                        }
+                    }
+                }
+            }
+        } else {
+            return profile_valid;
+        }
+    }
+
+    proc K::is_policy_valid(policy: UInt64) {
+        if policy == POLICY_STRICT {
+            return STATUS_OK;
+        } else {
+            if policy == POLICY_BALANCED {
+                return STATUS_OK;
+            } else {
+                if policy == POLICY_PERFORMANCE {
+                    return STATUS_OK;
+                } else {
+                    return STATUS_INVALID_POLICY;
+                }
+            }
+        }
+    }
+
+    proc K::is_lifecycle_state_valid(state: UInt64) {
+        if state == STATE_CREATED {
+            return STATUS_OK;
+        } else {
+            if state == STATE_SCHEDULED {
+                return STATUS_OK;
+            } else {
+                if state == STATE_BOUND {
+                    return STATUS_OK;
+                } else {
+                    if state == STATE_ACTIVE {
+                        return STATUS_OK;
+                    } else {
+                        if state == STATE_SUSPENDED {
+                            return STATUS_OK;
+                        } else {
+                            if state == STATE_TERMINATED {
+                                return STATUS_OK;
+                            } else {
+                                if state == STATE_RELEASED {
+                                    return STATUS_OK;
+                                } else {
+                                    return STATUS_INVALID_STATE;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    proc K::is_lifecycle_transition_valid(from_state: UInt64, to_state: UInt64) {
+        let from_valid = is_lifecycle_state_valid(from_state);
+        if from_valid == STATUS_OK {
+            let to_valid = is_lifecycle_state_valid(to_state);
+            if to_valid == STATUS_OK {
+                if from_state == STATE_CREATED {
+                    if to_state == STATE_SCHEDULED {
+                        return STATUS_OK;
+                    } else {
+                        return STATUS_INVALID_TRANSITION;
+                    }
+                } else {
+                    if from_state == STATE_SCHEDULED {
+                        if to_state == STATE_BOUND {
+                            return STATUS_OK;
+                        } else {
+                            return STATUS_INVALID_TRANSITION;
+                        }
+                    } else {
+                        if from_state == STATE_BOUND {
+                            if to_state == STATE_ACTIVE {
+                                return STATUS_OK;
+                            } else {
+                                return STATUS_INVALID_TRANSITION;
+                            }
+                        } else {
+                            if from_state == STATE_ACTIVE {
+                                if to_state == STATE_SUSPENDED {
+                                    return STATUS_OK;
+                                } else {
+                                    if to_state == STATE_TERMINATED {
+                                        return STATUS_OK;
+                                    } else {
+                                        return STATUS_INVALID_TRANSITION;
+                                    }
+                                }
+                            } else {
+                                if from_state == STATE_SUSPENDED {
+                                    if to_state == STATE_ACTIVE {
+                                        return STATUS_OK;
+                                    } else {
+                                        if to_state == STATE_TERMINATED {
+                                            return STATUS_OK;
+                                        } else {
+                                            return STATUS_INVALID_TRANSITION;
+                                        }
+                                    }
+                                } else {
+                                    if from_state == STATE_TERMINATED {
+                                        if to_state == STATE_RELEASED {
+                                            return STATUS_OK;
+                                        } else {
+                                            return STATUS_INVALID_TRANSITION;
+                                        }
+                                    } else {
+                                        return STATUS_INVALID_TRANSITION;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                return to_valid;
+            }
+        } else {
+            return from_valid;
+        }
+    }
+
+    proc K::default_capability_for_profile(profile: UInt64) {
+        if profile == PROFILE_K_ONLY {
+            return CAP_SCOPE_K;
+        } else {
+            if profile == PROFILE_KQ {
+                return CAP_SCOPE_KQ;
+            } else {
+                if profile == PROFILE_K_PHI {
+                    return CAP_SCOPE_K_PHI;
+                } else {
+                    if profile == PROFILE_FULL {
+                        return CAP_SCOPE_FULL;
+                    } else {
+                        return 0;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,10 @@
+// File: cloud_runtime_e2e.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: aggregate test entrypoint for XDV-043 behavior checks.
+
+forge XdvCloudRuntimeE2E {
+    proc K::run_all_tests() {
+        return XdvCloudRuntimeTests::K::run_all_tests();
+    }
+}

@@ -1,0 +1,127 @@
+// File: cloud_hcm.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: Hybrid Container Model (HCM) for XDV-043.
+
+forge XdvCloudRuntimeHcm {
+
+    const STATUS_OK: UInt32 = 0;
+
+    proc K::container_key(container_id: UInt64, tenant_id: UInt64, vhm_instance: UInt64) {
+        if container_id == 0 {
+            return 0;
+        } else {
+            if vhm_instance == 0 {
+                return 0;
+            } else {
+                let tenant_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(tenant_id);
+                if tenant_valid == STATUS_OK {
+                    return (tenant_id * 1000000000000) + (vhm_instance * 1000000) + container_id;
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
+
+    proc K::build_hybrid_container(container_id: UInt64, tenant_id: UInt64, vhm_instance: UInt64, domain_profile: UInt64, capability_scope: UInt64, cpu_units: UInt64, memory_units: UInt64, policy_profile: UInt64, contract_epoch: UInt64) {
+        let key = container_key(container_id, tenant_id, vhm_instance);
+        if key == 0 {
+            return 0;
+        } else {
+            let profile_valid = XdvCloudRuntimeContracts::K::is_domain_profile_valid(domain_profile);
+            if profile_valid == STATUS_OK {
+                let cap_valid = XdvCloudRuntimeContracts::K::is_capability_valid_for_profile(domain_profile, capability_scope);
+                if cap_valid == STATUS_OK {
+                    let policy_valid = XdvCloudRuntimeContracts::K::is_policy_valid(policy_profile);
+                    if policy_valid == STATUS_OK {
+                        if cpu_units == 0 {
+                            return 0;
+                        } else {
+                            if memory_units == 0 {
+                                return 0;
+                            } else {
+                                if contract_epoch == 0 {
+                                    return 0;
+                                } else {
+                                    return (key * 1000000) + (domain_profile * 100000) + (policy_profile * 10000) + (cpu_units * 100) + (memory_units - ((memory_units / 100) * 100));
+                                }
+                            }
+                        }
+                    } else {
+                        return 0;
+                    }
+                } else {
+                    return 0;
+                }
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    proc K::lifecycle_transition(container_id: UInt64, tenant_id: UInt64, from_state: UInt64, to_state: UInt64, logical_time: UInt64) {
+        if container_id == 0 {
+            return XdvCloudRuntimeContracts::K::STATUS_INVALID_STATE;
+        } else {
+            if logical_time == 0 {
+                return XdvCloudRuntimeContracts::K::STATUS_INVALID_STATE;
+            } else {
+                let tenant_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(tenant_id);
+                if tenant_valid == STATUS_OK {
+                    return XdvCloudRuntimeContracts::K::is_lifecycle_transition_valid(from_state, to_state);
+                } else {
+                    return tenant_valid;
+                }
+            }
+        }
+    }
+
+    proc K::lifecycle_transition_key(container_id: UInt64, tenant_id: UInt64, from_state: UInt64, to_state: UInt64, logical_time: UInt64) {
+        let transition_status = lifecycle_transition(container_id, tenant_id, from_state, to_state, logical_time);
+        if transition_status == STATUS_OK {
+            return (logical_time * 1000000000) + (tenant_id * 1000000) + (container_id * 100) + (from_state * 10) + to_state;
+        } else {
+            return 0;
+        }
+    }
+
+    proc K::transition_record_token(container_id: UInt64, tenant_id: UInt64, from_state: UInt64, to_state: UInt64, logical_time: UInt64, domain_profile: UInt64, capability_scope: UInt64) {
+        let key = lifecycle_transition_key(container_id, tenant_id, from_state, to_state, logical_time);
+        if key == 0 {
+            return 0;
+        } else {
+            let cap_valid = XdvCloudRuntimeContracts::K::is_capability_valid_for_profile(domain_profile, capability_scope);
+            if cap_valid == STATUS_OK {
+                return (key * 10) + domain_profile;
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    proc K::resources_release_token(container_id: UInt64, tenant_id: UInt64, cpu_units: UInt64, memory_units: UInt64, release_tick: UInt64) {
+        if container_id == 0 {
+            return 0;
+        } else {
+            if release_tick == 0 {
+                return 0;
+            } else {
+                let tenant_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(tenant_id);
+                if tenant_valid == STATUS_OK {
+                    if cpu_units == 0 {
+                        return 0;
+                    } else {
+                        if memory_units == 0 {
+                            return 0;
+                        } else {
+                            return (release_tick * 1000000000) + (tenant_id * 1000000) + (container_id * 1000) + (cpu_units * 10) + (memory_units - ((memory_units / 10) * 10));
+                        }
+                    }
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
+}

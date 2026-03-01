@@ -1,2 +1,148 @@
-﻿# XDV Cloud Runtime bootstrap surface
-# TODO: implement module entrypoint
+// File: main.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: top-level entrypoints for XDV-043.
+
+forge XdvCloudRuntimeMain {
+
+    const STATUS_OK: UInt32 = 0;
+    const STATUS_BOOTSTRAP_FAILED: UInt32 = 1;
+
+    const DOMAIN_Q: UInt64 = 1;
+
+    const PROFILE_KQ: UInt64 = 2;
+
+    const CAP_SCOPE_KQ: UInt64 = 3;
+
+    const POLICY_BALANCED: UInt64 = 2;
+
+    const STATE_CREATED: UInt64 = 1;
+    const STATE_SCHEDULED: UInt64 = 2;
+    const STATE_BOUND: UInt64 = 3;
+    const STATE_ACTIVE: UInt64 = 4;
+
+    proc K::startup_contract_validation() {
+        let profile = XdvCloudRuntimeContracts::K::is_domain_profile_valid(PROFILE_KQ);
+        if profile == STATUS_OK {
+            let cap = XdvCloudRuntimeContracts::K::is_capability_valid_for_profile(PROFILE_KQ, CAP_SCOPE_KQ);
+            if cap == STATUS_OK {
+                let policy = XdvCloudRuntimeContracts::K::is_policy_valid(POLICY_BALANCED);
+                if policy == STATUS_OK {
+                    return STATUS_OK;
+                } else {
+                    return STATUS_BOOTSTRAP_FAILED;
+                }
+            } else {
+                return STATUS_BOOTSTRAP_FAILED;
+            }
+        } else {
+            return STATUS_BOOTSTRAP_FAILED;
+        }
+    }
+
+    proc K::smoke_hybrid_container_flow() {
+        let container = XdvCloudRuntimeHcm::K::build_hybrid_container(1001, 17, 3, PROFILE_KQ, CAP_SCOPE_KQ, 2, 512, POLICY_BALANCED, 90);
+        if container == 0 {
+            return STATUS_BOOTSTRAP_FAILED;
+        } else {
+            let s1 = XdvCloudRuntimeHcm::K::lifecycle_transition(1001, 17, STATE_CREATED, STATE_SCHEDULED, 91);
+            let s2 = XdvCloudRuntimeHcm::K::lifecycle_transition(1001, 17, STATE_SCHEDULED, STATE_BOUND, 92);
+            let s3 = XdvCloudRuntimeHcm::K::lifecycle_transition(1001, 17, STATE_BOUND, STATE_ACTIVE, 93);
+
+            if s1 == STATUS_OK {
+                if s2 == STATUS_OK {
+                    if s3 == STATUS_OK {
+                        return STATUS_OK;
+                    } else {
+                        return STATUS_BOOTSTRAP_FAILED;
+                    }
+                } else {
+                    return STATUS_BOOTSTRAP_FAILED;
+                }
+            } else {
+                return STATUS_BOOTSTRAP_FAILED;
+            }
+        }
+    }
+
+    proc K::smoke_isolation_flow() {
+        let binding = XdvCloudRuntimeMtil::K::validate_tenant_binding(17, 17);
+        if binding == STATUS_OK {
+            let domain = XdvCloudRuntimeMtil::K::enforce_domain_policy(PROFILE_KQ, DOMAIN_Q, CAP_SCOPE_KQ);
+            if domain == STATUS_OK {
+                let isolation = XdvCloudRuntimeMtil::K::enforce_tenant_isolation(17, 17, DOMAIN_Q, 0);
+                if isolation == STATUS_OK {
+                    let quota = XdvCloudRuntimeMtil::K::check_tenant_resource_quota(4, 10, 900, 2000);
+                    if quota == STATUS_OK {
+                        return STATUS_OK;
+                    } else {
+                        return STATUS_BOOTSTRAP_FAILED;
+                    }
+                } else {
+                    return STATUS_BOOTSTRAP_FAILED;
+                }
+            } else {
+                return STATUS_BOOTSTRAP_FAILED;
+            }
+        } else {
+            return STATUS_BOOTSTRAP_FAILED;
+        }
+    }
+
+    proc K::smoke_deterministic_scaling_and_placement() {
+        let node = XdvCloudRuntimeDao::K::place_container_two_nodes(
+            PROFILE_KQ,
+            CAP_SCOPE_KQ,
+            POLICY_BALANCED,
+            17,
+            1001,
+            1,
+            31, 1, 1, 40, 80, 0, 6,
+            32, 1, 0, 30, 60, 0, 6
+        );
+
+        if node == 0 {
+            return STATUS_BOOTSTRAP_FAILED;
+        } else {
+            let replicas = XdvCloudRuntimeCrcp::K::deterministic_target_replicas(POLICY_BALANCED, 3, 2, 6, 78, 35, 2, 0, 0);
+            if replicas == 0 {
+                return STATUS_BOOTSTRAP_FAILED;
+            } else {
+                let scale_token = XdvCloudRuntimeCrcp::K::deterministic_autoscale_and_place(POLICY_BALANCED, 3, 2, 6, 78, 35, 2, 0, 0, node, 10, 17, 100);
+                if scale_token == 0 {
+                    return STATUS_BOOTSTRAP_FAILED;
+                } else {
+                    return STATUS_OK;
+                }
+            }
+        }
+    }
+
+    proc K::run_self_tests() {
+        return XdvCloudRuntimeTests::K::run_all_tests();
+    }
+
+    proc K::bootstrap() {
+        let startup = startup_contract_validation();
+        if startup == STATUS_OK {
+            let hcm = smoke_hybrid_container_flow();
+            if hcm == STATUS_OK {
+                let iso = smoke_isolation_flow();
+                if iso == STATUS_OK {
+                    let scale_place = smoke_deterministic_scaling_and_placement();
+                    if scale_place == STATUS_OK {
+                        return STATUS_OK;
+                    } else {
+                        return STATUS_BOOTSTRAP_FAILED;
+                    }
+                } else {
+                    return STATUS_BOOTSTRAP_FAILED;
+                }
+            } else {
+                return STATUS_BOOTSTRAP_FAILED;
+            }
+        } else {
+            return STATUS_BOOTSTRAP_FAILED;
+        }
+    }
+}

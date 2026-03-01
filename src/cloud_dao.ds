@@ -1,0 +1,159 @@
+// File: cloud_dao.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: Domain-Aware Orchestrator (DAO) for deterministic placement.
+
+forge XdvCloudRuntimeDao {
+
+    const STATUS_OK: UInt32 = 0;
+
+    proc K::policy_bonus(policy_profile: UInt64) {
+        if policy_profile == XdvCloudRuntimeContracts::K::POLICY_STRICT {
+            return 2;
+        } else {
+            if policy_profile == XdvCloudRuntimeContracts::K::POLICY_BALANCED {
+                return 4;
+            } else {
+                if policy_profile == XdvCloudRuntimeContracts::K::POLICY_PERFORMANCE {
+                    return 6;
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
+
+    proc K::node_supports_profile(domain_profile: UInt64, node_q_available: UInt64, node_phi_available: UInt64) {
+        let profile_valid = XdvCloudRuntimeContracts::K::is_domain_profile_valid(domain_profile);
+        if profile_valid == STATUS_OK {
+            let requires_q = XdvCloudRuntimeContracts::K::profile_requires_q(domain_profile);
+            if requires_q == 1 {
+                if node_q_available == 0 {
+                    return 0;
+                }
+            }
+
+            let requires_phi = XdvCloudRuntimeContracts::K::profile_requires_phi(domain_profile);
+            if requires_phi == 1 {
+                if node_phi_available == 0 {
+                    return 0;
+                }
+            }
+
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
+    proc K::candidate_score(domain_profile: UInt64, capability_scope: UInt64, policy_profile: UInt64, node_id: UInt64, node_q_available: UInt64, node_phi_available: UInt64, node_load_percent: UInt64, node_coherence_percent: UInt64, node_tenant_conflict: UInt64, node_quota_headroom: UInt64) {
+        if node_id == 0 {
+            return 0;
+        } else {
+            let cap_valid = XdvCloudRuntimeContracts::K::is_capability_valid_for_profile(domain_profile, capability_scope);
+            if cap_valid == STATUS_OK {
+                let policy_valid = XdvCloudRuntimeContracts::K::is_policy_valid(policy_profile);
+                if policy_valid == STATUS_OK {
+                    let supports = node_supports_profile(domain_profile, node_q_available, node_phi_available);
+                    if supports == 1 {
+                        if node_load_percent > 100 {
+                            return 0;
+                        } else {
+                            if node_coherence_percent > 100 {
+                                return 0;
+                            } else {
+                                if node_quota_headroom == 0 {
+                                    return 0;
+                                } else {
+                                    let load_inverse = 100 - node_load_percent;
+                                    let policy_weight = policy_bonus(policy_profile);
+                                    let score_raw = (node_quota_headroom * 20) + (load_inverse * 5) + (node_coherence_percent * 3) + (policy_weight * 10) + (node_q_available * 17) + (node_phi_available * 19);
+                                    if node_tenant_conflict == 0 {
+                                        return score_raw;
+                                    } else {
+                                        if score_raw > 120 {
+                                            return score_raw - 120;
+                                        } else {
+                                            return 0;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        return 0;
+                    }
+                } else {
+                    return 0;
+                }
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    proc K::deterministic_order_key(logical_tick: UInt64, tenant_id: UInt64, container_id: UInt64, request_sequence: UInt64) {
+        let tenant_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(tenant_id);
+        if tenant_valid == STATUS_OK {
+            if container_id == 0 {
+                return 0;
+            } else {
+                return (logical_tick * 1000000000) + (tenant_id * 1000000) + (container_id * 1000) + request_sequence;
+            }
+        } else {
+            return 0;
+        }
+    }
+
+    proc K::place_container_two_nodes(domain_profile: UInt64, capability_scope: UInt64, policy_profile: UInt64, tenant_id: UInt64, container_id: UInt64, request_sequence: UInt64,
+        node_a_id: UInt64, node_a_q_available: UInt64, node_a_phi_available: UInt64, node_a_load_percent: UInt64, node_a_coherence_percent: UInt64, node_a_tenant_conflict: UInt64, node_a_quota_headroom: UInt64,
+        node_b_id: UInt64, node_b_q_available: UInt64, node_b_phi_available: UInt64, node_b_load_percent: UInt64, node_b_coherence_percent: UInt64, node_b_tenant_conflict: UInt64, node_b_quota_headroom: UInt64
+    ) {
+        let order_key = deterministic_order_key(1, tenant_id, container_id, request_sequence);
+        if order_key == 0 {
+            return 0;
+        } else {
+            let score_a = candidate_score(domain_profile, capability_scope, policy_profile, node_a_id, node_a_q_available, node_a_phi_available, node_a_load_percent, node_a_coherence_percent, node_a_tenant_conflict, node_a_quota_headroom);
+            let score_b = candidate_score(domain_profile, capability_scope, policy_profile, node_b_id, node_b_q_available, node_b_phi_available, node_b_load_percent, node_b_coherence_percent, node_b_tenant_conflict, node_b_quota_headroom);
+
+            if score_a == 0 {
+                if score_b == 0 {
+                    return 0;
+                } else {
+                    return node_b_id;
+                }
+            } else {
+                if score_b == 0 {
+                    return node_a_id;
+                } else {
+                    if score_a > score_b {
+                        return node_a_id;
+                    } else {
+                        if score_b > score_a {
+                            return node_b_id;
+                        } else {
+                            if node_a_id < node_b_id {
+                                return node_a_id;
+                            } else {
+                                return node_b_id;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    proc K::placement_decision_token(tenant_id: UInt64, container_id: UInt64, selected_node: UInt64, decision_tick: UInt64, score_a: UInt64, score_b: UInt64) {
+        if selected_node == 0 {
+            return 0;
+        } else {
+            let key = deterministic_order_key(decision_tick, tenant_id, container_id, 0);
+            if key == 0 {
+                return 0;
+            } else {
+                return (key * 1000) + (selected_node * 10) + ((score_a + score_b) - (((score_a + score_b) / 10) * 10));
+            }
+        }
+    }
+}

@@ -1,0 +1,241 @@
+// File: cloud_tests.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: XDV-043 behavior tests.
+
+forge XdvCloudRuntimeTests {
+
+    const TEST_PASS: UInt32 = 0;
+    const TEST_FAIL: UInt32 = 1;
+
+    const STATUS_OK: UInt32 = 0;
+    const STATUS_INVALID_TRANSITION: UInt32 = 7;
+    const STATUS_ISOLATION_VIOLATION: UInt32 = 8;
+    const STATUS_POLICY_VIOLATION: UInt32 = 9;
+    const STATUS_ORDER_VIOLATION: UInt32 = 10;
+
+    const DOMAIN_K: UInt64 = 0;
+    const DOMAIN_Q: UInt64 = 1;
+    const DOMAIN_PHI: UInt64 = 2;
+
+    const PROFILE_K_ONLY: UInt64 = 1;
+    const PROFILE_KQ: UInt64 = 2;
+    const PROFILE_FULL: UInt64 = 4;
+
+    const CAP_SCOPE_K: UInt64 = 1;
+    const CAP_SCOPE_KQ: UInt64 = 3;
+    const CAP_SCOPE_FULL: UInt64 = 7;
+
+    const POLICY_BALANCED: UInt64 = 2;
+
+    const STATE_CREATED: UInt64 = 1;
+    const STATE_SCHEDULED: UInt64 = 2;
+    const STATE_BOUND: UInt64 = 3;
+    const STATE_ACTIVE: UInt64 = 4;
+
+    const EXPLICIT_CONTRACT_NONE: UInt64 = 0;
+    const EXPLICIT_CONTRACT_K_ONLY: UInt64 = 1;
+    const EXPLICIT_CONTRACT_MULTI_DOMAIN: UInt64 = 2;
+
+    proc K::expect_u32(actual: UInt32, expected: UInt32) {
+        if actual == expected {
+            return TEST_PASS;
+        } else {
+            return TEST_FAIL;
+        }
+    }
+
+    proc K::expect_u64(actual: UInt64, expected: UInt64) {
+        if actual == expected {
+            return TEST_PASS;
+        } else {
+            return TEST_FAIL;
+        }
+    }
+
+    proc K::combine(lhs: UInt32, rhs: UInt32) {
+        if lhs == TEST_PASS {
+            return rhs;
+        } else {
+            return TEST_FAIL;
+        }
+    }
+
+    proc K::test_hybrid_container_model() {
+        let c1 = XdvCloudRuntimeHcm::K::build_hybrid_container(101, 7, 11, PROFILE_K_ONLY, CAP_SCOPE_K, 2, 512, POLICY_BALANCED, 30);
+        let c2 = XdvCloudRuntimeHcm::K::build_hybrid_container(102, 7, 12, PROFILE_FULL, CAP_SCOPE_FULL, 4, 768, POLICY_BALANCED, 30);
+        let c_bad = XdvCloudRuntimeHcm::K::build_hybrid_container(103, 7, 13, PROFILE_FULL, CAP_SCOPE_K, 4, 768, POLICY_BALANCED, 30);
+
+        if c1 == 0 {
+            return TEST_FAIL;
+        } else {
+            if c2 == 0 {
+                return TEST_FAIL;
+            } else {
+                if c_bad == 0 {
+                    let s1 = XdvCloudRuntimeHcm::K::lifecycle_transition(101, 7, STATE_CREATED, STATE_SCHEDULED, 41);
+                    let s2 = XdvCloudRuntimeHcm::K::lifecycle_transition(101, 7, STATE_SCHEDULED, STATE_BOUND, 42);
+                    let s3 = XdvCloudRuntimeHcm::K::lifecycle_transition(101, 7, STATE_BOUND, STATE_ACTIVE, 43);
+                    let s_bad = XdvCloudRuntimeHcm::K::lifecycle_transition(101, 7, STATE_ACTIVE, STATE_CREATED, 44);
+
+                    let r1 = XdvCloudRuntimeHcm::K::transition_record_token(101, 7, STATE_BOUND, STATE_ACTIVE, 45, PROFILE_K_ONLY, CAP_SCOPE_K);
+                    let r2 = XdvCloudRuntimeHcm::K::transition_record_token(101, 7, STATE_BOUND, STATE_ACTIVE, 45, PROFILE_K_ONLY, CAP_SCOPE_K);
+
+                    let t1 = expect_u32(s1, STATUS_OK);
+                    let t2 = expect_u32(s2, STATUS_OK);
+                    let t3 = expect_u32(s3, STATUS_OK);
+                    let t4 = expect_u32(s_bad, STATUS_INVALID_TRANSITION);
+                    let t5 = expect_u64(r1, r2);
+
+                    let u1 = combine(t1, t2);
+                    let u2 = combine(u1, t3);
+                    let u3 = combine(u2, t4);
+                    let u4 = combine(u3, t5);
+
+                    if r1 == 0 {
+                        return TEST_FAIL;
+                    } else {
+                        return u4;
+                    }
+                } else {
+                    return TEST_FAIL;
+                }
+            }
+        }
+    }
+
+    proc K::test_tenant_domain_policy_isolation() {
+        let bind_ok = XdvCloudRuntimeMtil::K::validate_tenant_binding(7, 7);
+        let bind_fail = XdvCloudRuntimeMtil::K::validate_tenant_binding(7, 8);
+
+        let domain_ok = XdvCloudRuntimeMtil::K::enforce_domain_policy(PROFILE_KQ, DOMAIN_Q, CAP_SCOPE_KQ);
+        let domain_fail = XdvCloudRuntimeMtil::K::enforce_domain_policy(PROFILE_K_ONLY, DOMAIN_Q, CAP_SCOPE_K);
+
+        let iso_q_fail = XdvCloudRuntimeMtil::K::enforce_tenant_isolation(7, 8, DOMAIN_Q, EXPLICIT_CONTRACT_K_ONLY);
+        let iso_phi_ok = XdvCloudRuntimeMtil::K::enforce_tenant_isolation(7, 8, DOMAIN_PHI, EXPLICIT_CONTRACT_MULTI_DOMAIN);
+        let iso_k_ok = XdvCloudRuntimeMtil::K::enforce_tenant_isolation(7, 8, DOMAIN_K, EXPLICIT_CONTRACT_K_ONLY);
+        let iso_k_fail = XdvCloudRuntimeMtil::K::enforce_tenant_isolation(7, 8, DOMAIN_K, EXPLICIT_CONTRACT_NONE);
+
+        let quota_ok = XdvCloudRuntimeMtil::K::check_tenant_resource_quota(8, 10, 1000, 1200);
+        let quota_fail = XdvCloudRuntimeMtil::K::check_tenant_resource_quota(11, 10, 1000, 1200);
+
+        let ns_a = XdvCloudRuntimeMtil::K::tenant_namespace_token(7, PROFILE_KQ, 2);
+        let ns_b = XdvCloudRuntimeMtil::K::tenant_namespace_token(8, PROFILE_KQ, 2);
+
+        let t1 = expect_u32(bind_ok, STATUS_OK);
+        let t2 = expect_u32(bind_fail, STATUS_ISOLATION_VIOLATION);
+        let t3 = expect_u32(domain_ok, STATUS_OK);
+        let t4 = expect_u32(domain_fail, STATUS_POLICY_VIOLATION);
+        let t5 = expect_u32(iso_q_fail, STATUS_ISOLATION_VIOLATION);
+        let t6 = expect_u32(iso_phi_ok, STATUS_OK);
+        let t7 = expect_u32(iso_k_ok, STATUS_OK);
+        let t8 = expect_u32(iso_k_fail, STATUS_ISOLATION_VIOLATION);
+        let t9 = expect_u32(quota_ok, STATUS_OK);
+        let t10 = expect_u32(quota_fail, STATUS_POLICY_VIOLATION);
+
+        let u1 = combine(t1, t2);
+        let u2 = combine(u1, t3);
+        let u3 = combine(u2, t4);
+        let u4 = combine(u3, t5);
+        let u5 = combine(u4, t6);
+        let u6 = combine(u5, t7);
+        let u7 = combine(u6, t8);
+        let u8 = combine(u7, t9);
+        let u9 = combine(u8, t10);
+
+        if ns_a == 0 {
+            return TEST_FAIL;
+        } else {
+            if ns_b == 0 {
+                return TEST_FAIL;
+            } else {
+                if ns_a == ns_b {
+                    return TEST_FAIL;
+                } else {
+                    return u9;
+                }
+            }
+        }
+    }
+
+    proc K::test_deterministic_autoscaling_and_placement() {
+        let place_a = XdvCloudRuntimeDao::K::place_container_two_nodes(
+            PROFILE_KQ,
+            CAP_SCOPE_KQ,
+            POLICY_BALANCED,
+            7,
+            101,
+            5,
+            10, 1, 1, 40, 82, 0, 5,
+            11, 1, 0, 35, 60, 0, 5
+        );
+
+        let place_b = XdvCloudRuntimeDao::K::place_container_two_nodes(
+            PROFILE_KQ,
+            CAP_SCOPE_KQ,
+            POLICY_BALANCED,
+            7,
+            101,
+            5,
+            10, 1, 1, 40, 82, 0, 5,
+            11, 1, 0, 35, 60, 0, 5
+        );
+
+        let place_tie = XdvCloudRuntimeDao::K::place_container_two_nodes(
+            PROFILE_K_ONLY,
+            CAP_SCOPE_K,
+            POLICY_BALANCED,
+            7,
+            202,
+            6,
+            20, 1, 1, 50, 70, 0, 4,
+            21, 1, 1, 50, 70, 0, 4
+        );
+
+        let scale_a = XdvCloudRuntimeCrcp::K::deterministic_target_replicas(POLICY_BALANCED, 3, 2, 8, 75, 30, 2, 0, 0);
+        let scale_b = XdvCloudRuntimeCrcp::K::deterministic_target_replicas(POLICY_BALANCED, 3, 2, 8, 75, 30, 2, 0, 0);
+        let scale_hold = XdvCloudRuntimeCrcp::K::deterministic_target_replicas(POLICY_BALANCED, 4, 2, 8, 80, 35, 2, 0, 1);
+        let scale_down = XdvCloudRuntimeCrcp::K::deterministic_target_replicas(POLICY_BALANCED, 4, 2, 8, 20, 5, 0, 0, 0);
+
+        let order_ok = XdvCloudRuntimeCrcp::K::validate_scale_transition_order(100, 101);
+        let order_bad = XdvCloudRuntimeCrcp::K::validate_scale_transition_order(100, 99);
+
+        let token_a = XdvCloudRuntimeCrcp::K::scaling_event_token(55, 7, 3, 4, 100, place_a);
+        let token_b = XdvCloudRuntimeCrcp::K::scaling_event_token(55, 7, 3, 4, 100, place_b);
+
+        let t1 = expect_u64(place_a, place_b);
+        let t2 = expect_u64(place_tie, 20);
+        let t3 = expect_u64(scale_a, scale_b);
+        let t4 = expect_u64(scale_a, 4);
+        let t5 = expect_u64(scale_hold, 4);
+        let t6 = expect_u64(scale_down, 3);
+        let t7 = expect_u32(order_ok, STATUS_OK);
+        let t8 = expect_u32(order_bad, STATUS_ORDER_VIOLATION);
+        let t9 = expect_u64(token_a, token_b);
+
+        let u1 = combine(t1, t2);
+        let u2 = combine(u1, t3);
+        let u3 = combine(u2, t4);
+        let u4 = combine(u3, t5);
+        let u5 = combine(u4, t6);
+        let u6 = combine(u5, t7);
+        let u7 = combine(u6, t8);
+        let u8 = combine(u7, t9);
+
+        if place_a == 0 {
+            return TEST_FAIL;
+        } else {
+            if token_a == 0 {
+                return TEST_FAIL;
+            } else {
+                return u8;
+            }
+        }
+    }
+
+    proc K::run_all_tests() {
+        let t1 = test_hybrid_container_model();
+        let t2 = combine(t1, test_tenant_domain_policy_isolation());
+        return combine(t2, test_deterministic_autoscaling_and_placement());
+    }
+}

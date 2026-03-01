@@ -1,0 +1,165 @@
+// File: cloud_crcp.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: Cloud Resource Control Plane (CRCP) deterministic scaling and ordering.
+
+forge XdvCloudRuntimeCrcp {
+
+    const STATUS_OK: UInt32 = 0;
+
+    const POLICY_STRICT: UInt64 = 1;
+    const POLICY_BALANCED: UInt64 = 2;
+    const POLICY_PERFORMANCE: UInt64 = 3;
+
+    proc K::policy_scale_up_threshold(policy_profile: UInt64) {
+        if policy_profile == POLICY_STRICT {
+            return 170;
+        } else {
+            if policy_profile == POLICY_BALANCED {
+                return 130;
+            } else {
+                if policy_profile == POLICY_PERFORMANCE {
+                    return 100;
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
+
+    proc K::policy_scale_down_threshold(policy_profile: UInt64) {
+        if policy_profile == POLICY_STRICT {
+            return 40;
+        } else {
+            if policy_profile == POLICY_BALANCED {
+                return 45;
+            } else {
+                if policy_profile == POLICY_PERFORMANCE {
+                    return 55;
+                } else {
+                    return 0;
+                }
+            }
+        }
+    }
+
+    proc K::demand_score(cpu_load_percent: UInt64, queue_depth: UInt64, pending_domain_bindings: UInt64, fault_events: UInt64) {
+        if cpu_load_percent > 100 {
+            return 0;
+        } else {
+            let score = cpu_load_percent + queue_depth + (pending_domain_bindings * 15) + (fault_events * 20);
+            return score;
+        }
+    }
+
+    proc K::bounded_replicas(current_replicas: UInt64, min_replicas: UInt64, max_replicas: UInt64) {
+        if min_replicas == 0 {
+            return 0;
+        } else {
+            if min_replicas > max_replicas {
+                return 0;
+            } else {
+                if current_replicas < min_replicas {
+                    return min_replicas;
+                } else {
+                    if current_replicas > max_replicas {
+                        return max_replicas;
+                    } else {
+                        return current_replicas;
+                    }
+                }
+            }
+        }
+    }
+
+    proc K::validate_scale_transition_order(previous_event_tick: UInt64, new_event_tick: UInt64) {
+        if new_event_tick < previous_event_tick {
+            return XdvCloudRuntimeContracts::K::STATUS_ORDER_VIOLATION;
+        } else {
+            return STATUS_OK;
+        }
+    }
+
+    proc K::deterministic_target_replicas(policy_profile: UInt64, current_replicas: UInt64, min_replicas: UInt64, max_replicas: UInt64,
+        cpu_load_percent: UInt64, queue_depth: UInt64, pending_domain_bindings: UInt64, fault_events: UInt64, inflight_transitions: UInt64
+    ) {
+        let policy_valid = XdvCloudRuntimeContracts::K::is_policy_valid(policy_profile);
+        if policy_valid == STATUS_OK {
+            let bounded = bounded_replicas(current_replicas, min_replicas, max_replicas);
+            if bounded == 0 {
+                return 0;
+            } else {
+                if inflight_transitions > 0 {
+                    return bounded;
+                } else {
+                    let score = demand_score(cpu_load_percent, queue_depth, pending_domain_bindings, fault_events);
+                    if score == 0 {
+                        return bounded;
+                    } else {
+                        let up_threshold = policy_scale_up_threshold(policy_profile);
+                        let down_threshold = policy_scale_down_threshold(policy_profile);
+
+                        if score >= up_threshold {
+                            if bounded < max_replicas {
+                                return bounded + 1;
+                            } else {
+                                return bounded;
+                            }
+                        } else {
+                            if score <= down_threshold {
+                                if bounded > min_replicas {
+                                    return bounded - 1;
+                                } else {
+                                    return bounded;
+                                }
+                            } else {
+                                return bounded;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            return 0;
+        }
+    }
+
+    proc K::scaling_event_token(service_id: UInt64, tenant_id: UInt64, from_replicas: UInt64, to_replicas: UInt64, event_tick: UInt64, selected_node: UInt64) {
+        if service_id == 0 {
+            return 0;
+        } else {
+            let tenant_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(tenant_id);
+            if tenant_valid == STATUS_OK {
+                if event_tick == 0 {
+                    return 0;
+                } else {
+                    return (event_tick * 1000000000) + (tenant_id * 1000000) + (service_id * 1000) + (from_replicas * 100) + (to_replicas * 10) + (selected_node - ((selected_node / 10) * 10));
+                }
+            } else {
+                return 0;
+            }
+        }
+    }
+
+    proc K::deterministic_autoscale_and_place(policy_profile: UInt64, current_replicas: UInt64, min_replicas: UInt64, max_replicas: UInt64,
+        cpu_load_percent: UInt64, queue_depth: UInt64, pending_domain_bindings: UInt64, fault_events: UInt64, inflight_transitions: UInt64,
+        selected_node: UInt64, service_id: UInt64, tenant_id: UInt64, event_tick: UInt64
+    ) {
+        let next_replicas = deterministic_target_replicas(policy_profile, current_replicas, min_replicas, max_replicas,
+            cpu_load_percent, queue_depth, pending_domain_bindings, fault_events, inflight_transitions);
+
+        if next_replicas == 0 {
+            return 0;
+        } else {
+            if next_replicas > current_replicas {
+                if selected_node == 0 {
+                    return 0;
+                } else {
+                    return scaling_event_token(service_id, tenant_id, current_replicas, next_replicas, event_tick, selected_node);
+                }
+            } else {
+                return scaling_event_token(service_id, tenant_id, current_replicas, next_replicas, event_tick, selected_node);
+            }
+        }
+    }
+}

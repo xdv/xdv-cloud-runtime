@@ -1,78 +1,70 @@
-﻿# XDV Cloud Runtime
+# XDV Cloud Runtime
 
 Version: 0.1.0
-Status: planned
+Status: active
 Language: Dust Programming Language (DPL)
 
 ## Specification Alignment
 
-Primary specification: XDV-043 in xdv-spec.
+Primary specification: XDV-043 in `xdv-spec`.
+
+Implemented focus for this milestone:
+
+1. Hybrid container model (HCM) with deterministic lifecycle guards.
+2. Tenant/domain policy isolation (MTIL) for K/Q/Phi execution paths.
+3. Deterministic autoscaling and placement (DAO + CRCP) with replay-stable outcomes.
 
 ## Purpose
 
-Hybrid container runtime and domain-aware cloud control plane.
+Hybrid container runtime and domain-aware cloud control plane for deterministic multi-tenant execution.
 
-## Scope
+## Modules
 
-This project is responsible for:
+- `src/cloud_contracts.ds`
+  Normative constants and validation for tenant, domain/profile, capability, policy, and lifecycle transitions.
 
-- Implementing normative requirements defined by XDV-043.
-- Publishing deterministic behavior contracts for integration with xdv-os.
-- Providing reusable modules for cross-repo integration.
-- Supplying verification and conformance fixtures for regression control.
+- `src/cloud_hcm.ds`
+  Hybrid container tokenization, lifecycle transitions, transition records, and release tokens.
 
-## Planned Deliverables
+- `src/cloud_mtil.ds`
+  Tenant namespace/contract keying and isolation policy enforcement across K/Q/Phi domains.
 
-- hcm, dao, mtil, crcp
-- Public APIs in src/
-- Test fixtures in tests/
-- Design and interface docs in docs/
+- `src/cloud_dao.ds`
+  Deterministic placement scoring and stable tie-breaking for domain-aware scheduling.
 
-## Repository Layout
+- `src/cloud_crcp.ds`
+  Deterministic autoscale target calculation, order validation, and scaling event tokenization.
 
-- src/ : core module implementations.
-- tests/ : deterministic unit/integration/conformance fixtures.
-- docs/ : architecture, protocol, and usage documentation.
-- State.toml : workspace manifest.
-- changelog.md : release and milestone notes.
+- `src/cloud_tests.ds`
+  Behavior tests covering HCM, MTIL, and deterministic DAO/CRCP decisions.
 
-## Initial Module Plan
+- `src/main.ds`
+  Startup validation, smoke flow, and self-test entrypoints.
 
-- src/main.ds: project entrypoint and top-level orchestration.
-- src/contracts.ds: normative contract models and validators.
-- src/protocol.ds: wire/protocol semantics for external interfaces.
-- src/errors.ds: canonical error model and deterministic mapping.
-- src/tests.ds: local test harness entry surface.
+## Design Notes
 
-## Dependencies
-
-Current planned dependencies:
-
-- xdv-hypervisor, xdv-distributed-scheduler, xdv-sdbm
-- dust runtime/toolchain packages as required by integration profile
-
-## Integration Contracts
-
-- Must preserve deterministic ordering semantics.
-- Must avoid implicit cross-domain state mutation.
-- Must emit structured metadata for replay and audit paths.
-- Must remain compatible with xdv-os build and boot/runtime contracts.
+- Hybrid containers enforce explicit profile/capability compatibility.
+- Q domain is hard tenant-isolated across different tenants.
+- Phi cross-tenant paths require explicit multi-domain contract mode.
+- Placement is deterministic and tie-broken by node identity.
+- Autoscaling decisions are deterministic and transition-order aware.
 
 ## Build
 
+```bash
 dust check xdv-cloud-runtime/src
+```
 
 ## Test
 
-dust test xdv-cloud-runtime/tests
+```bash
+dust check xdv-cloud-runtime/src/cloud_tests.ds
+dust check xdv-cloud-runtime/tests/cloud_runtime_e2e.ds
+```
 
-## Milestones
+## Integration Contracts
 
-1. M1: scaffold + contract models.
-2. M2: core pipeline implementation.
-3. M3: deterministic behavior and fixture hardening.
-4. M4: xdv-os integration and conformance gating.
-
-## Notes
-
-This project is initialized as a skeleton template and intentionally starts with minimal source implementation.
+- Preserve deterministic lifecycle/placement/scaling semantics for identical inputs.
+- Prevent implicit cross-tenant Q state sharing.
+- Keep tenant policy enforcement on all runtime domain binding paths.
+- Keep scaling order validation in path before emitting scale tokens.

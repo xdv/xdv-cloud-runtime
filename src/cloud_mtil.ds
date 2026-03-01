@@ -1,0 +1,255 @@
+// File: cloud_mtil.ds - This file is part of XDV
+// Copyright (c) 2026 Dust LLC, and Contributors
+// Description:
+//   xdv-cloud-runtime: Multi-Tenant Isolation Layer (MTIL) for XDV-043.
+
+forge XdvCloudRuntimeMtil {
+
+    const STATUS_OK: UInt32 = 0;
+
+    const EXPLICIT_CONTRACT_NONE: UInt64 = 0;
+    const EXPLICIT_CONTRACT_K_ONLY: UInt64 = 1;
+    const EXPLICIT_CONTRACT_MULTI_DOMAIN: UInt64 = 2;
+
+    const DOMAIN_K: UInt64 = 0;
+    const DOMAIN_Q: UInt64 = 1;
+    const DOMAIN_PHI: UInt64 = 2;
+
+    const CAP_SCOPE_K: UInt64 = 1;
+    const CAP_SCOPE_Q: UInt64 = 2;
+    const CAP_SCOPE_PHI: UInt64 = 4;
+    const CAP_SCOPE_KQ: UInt64 = 3;
+    const CAP_SCOPE_K_PHI: UInt64 = 5;
+    const CAP_SCOPE_Q_PHI: UInt64 = 6;
+    const CAP_SCOPE_FULL: UInt64 = 7;
+
+    proc K::tenant_namespace_token(tenant_id: UInt64, domain_profile: UInt64, pool_id: UInt64) {
+        let tenant_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(tenant_id);
+        if tenant_valid == STATUS_OK {
+            let profile_valid = XdvCloudRuntimeContracts::K::is_domain_profile_valid(domain_profile);
+            if profile_valid == STATUS_OK {
+                if pool_id == 0 {
+                    return 0;
+                } else {
+                    return (tenant_id * 10000000000) + (domain_profile * 100000000) + pool_id;
+                }
+            } else {
+                return 0;
+            }
+        } else {
+            return 0;
+        }
+    }
+
+    proc K::tenant_contract_namespace_key(tenant_id: UInt64, contract_id: UInt64, domain_profile: UInt64, contract_epoch: UInt64) {
+        if contract_id == 0 {
+            return 0;
+        } else {
+            if contract_epoch == 0 {
+                return 0;
+            } else {
+                let ns = tenant_namespace_token(tenant_id, domain_profile, 1);
+                if ns == 0 {
+                    return 0;
+                } else {
+                    return (contract_epoch * 1000000000000) + (ns * 1000) + contract_id;
+                }
+            }
+        }
+    }
+
+    proc K::validate_tenant_binding(runtime_tenant_id: UInt64, container_tenant_id: UInt64) {
+        let runtime_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(runtime_tenant_id);
+        if runtime_valid == STATUS_OK {
+            let container_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(container_tenant_id);
+            if container_valid == STATUS_OK {
+                if runtime_tenant_id == container_tenant_id {
+                    return STATUS_OK;
+                } else {
+                    return XdvCloudRuntimeContracts::K::STATUS_ISOLATION_VIOLATION;
+                }
+            } else {
+                return container_valid;
+            }
+        } else {
+            return runtime_valid;
+        }
+    }
+
+    proc K::capability_allows_domain(runtime_domain: UInt64, capability_scope: UInt64) {
+        if runtime_domain == DOMAIN_K {
+            if capability_scope == CAP_SCOPE_K {
+                return STATUS_OK;
+            } else {
+                if capability_scope == CAP_SCOPE_KQ {
+                    return STATUS_OK;
+                } else {
+                    if capability_scope == CAP_SCOPE_K_PHI {
+                        return STATUS_OK;
+                    } else {
+                        if capability_scope == CAP_SCOPE_FULL {
+                            return STATUS_OK;
+                        } else {
+                            return XdvCloudRuntimeContracts::K::STATUS_INVALID_CAPABILITY;
+                        }
+                    }
+                }
+            }
+        } else {
+            if runtime_domain == DOMAIN_Q {
+                if capability_scope == CAP_SCOPE_Q {
+                    return STATUS_OK;
+                } else {
+                    if capability_scope == CAP_SCOPE_KQ {
+                        return STATUS_OK;
+                    } else {
+                        if capability_scope == CAP_SCOPE_Q_PHI {
+                            return STATUS_OK;
+                        } else {
+                            if capability_scope == CAP_SCOPE_FULL {
+                                return STATUS_OK;
+                            } else {
+                                return XdvCloudRuntimeContracts::K::STATUS_INVALID_CAPABILITY;
+                            }
+                        }
+                    }
+                }
+            } else {
+                if runtime_domain == DOMAIN_PHI {
+                    if capability_scope == CAP_SCOPE_PHI {
+                        return STATUS_OK;
+                    } else {
+                        if capability_scope == CAP_SCOPE_K_PHI {
+                            return STATUS_OK;
+                        } else {
+                            if capability_scope == CAP_SCOPE_Q_PHI {
+                                return STATUS_OK;
+                            } else {
+                                if capability_scope == CAP_SCOPE_FULL {
+                                    return STATUS_OK;
+                                } else {
+                                    return XdvCloudRuntimeContracts::K::STATUS_INVALID_CAPABILITY;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    return XdvCloudRuntimeContracts::K::STATUS_INVALID_DOMAIN;
+                }
+            }
+        }
+    }
+
+    proc K::enforce_domain_policy(domain_profile: UInt64, runtime_domain: UInt64, capability_scope: UInt64) {
+        let profile_valid = XdvCloudRuntimeContracts::K::is_domain_profile_valid(domain_profile);
+        if profile_valid == STATUS_OK {
+            let domain_valid = XdvCloudRuntimeContracts::K::is_domain_valid(runtime_domain);
+            if domain_valid == STATUS_OK {
+                let cap_valid = capability_allows_domain(runtime_domain, capability_scope);
+                if cap_valid == STATUS_OK {
+                    if runtime_domain == DOMAIN_Q {
+                        let requires_q = XdvCloudRuntimeContracts::K::profile_requires_q(domain_profile);
+                        if requires_q == 1 {
+                            return STATUS_OK;
+                        } else {
+                            return XdvCloudRuntimeContracts::K::STATUS_POLICY_VIOLATION;
+                        }
+                    } else {
+                        if runtime_domain == DOMAIN_PHI {
+                            let requires_phi = XdvCloudRuntimeContracts::K::profile_requires_phi(domain_profile);
+                            if requires_phi == 1 {
+                                return STATUS_OK;
+                            } else {
+                                return XdvCloudRuntimeContracts::K::STATUS_POLICY_VIOLATION;
+                            }
+                        } else {
+                            return STATUS_OK;
+                        }
+                    }
+                } else {
+                    return cap_valid;
+                }
+            } else {
+                return domain_valid;
+            }
+        } else {
+            return profile_valid;
+        }
+    }
+
+    proc K::enforce_tenant_isolation(source_tenant_id: UInt64, target_tenant_id: UInt64, runtime_domain: UInt64, explicit_contract_mode: UInt64) {
+        let src_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(source_tenant_id);
+        if src_valid == STATUS_OK {
+            let dst_valid = XdvCloudRuntimeContracts::K::is_tenant_valid(target_tenant_id);
+            if dst_valid == STATUS_OK {
+                let domain_valid = XdvCloudRuntimeContracts::K::is_domain_valid(runtime_domain);
+                if domain_valid == STATUS_OK {
+                    if source_tenant_id == target_tenant_id {
+                        return STATUS_OK;
+                    } else {
+                        if runtime_domain == DOMAIN_K {
+                            if explicit_contract_mode == EXPLICIT_CONTRACT_K_ONLY {
+                                return STATUS_OK;
+                            } else {
+                                if explicit_contract_mode == EXPLICIT_CONTRACT_MULTI_DOMAIN {
+                                    return STATUS_OK;
+                                } else {
+                                    return XdvCloudRuntimeContracts::K::STATUS_ISOLATION_VIOLATION;
+                                }
+                            }
+                        } else {
+                            if runtime_domain == DOMAIN_Q {
+                                return XdvCloudRuntimeContracts::K::STATUS_ISOLATION_VIOLATION;
+                            } else {
+                                if explicit_contract_mode == EXPLICIT_CONTRACT_MULTI_DOMAIN {
+                                    return STATUS_OK;
+                                } else {
+                                    return XdvCloudRuntimeContracts::K::STATUS_ISOLATION_VIOLATION;
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    return domain_valid;
+                }
+            } else {
+                return dst_valid;
+            }
+        } else {
+            return src_valid;
+        }
+    }
+
+    proc K::check_tenant_resource_quota(cpu_used: UInt64, cpu_quota: UInt64, memory_used: UInt64, memory_quota: UInt64) {
+        if cpu_quota == 0 {
+            return XdvCloudRuntimeContracts::K::STATUS_POLICY_VIOLATION;
+        } else {
+            if memory_quota == 0 {
+                return XdvCloudRuntimeContracts::K::STATUS_POLICY_VIOLATION;
+            } else {
+                if cpu_used > cpu_quota {
+                    return XdvCloudRuntimeContracts::K::STATUS_POLICY_VIOLATION;
+                } else {
+                    if memory_used > memory_quota {
+                        return XdvCloudRuntimeContracts::K::STATUS_POLICY_VIOLATION;
+                    } else {
+                        return STATUS_OK;
+                    }
+                }
+            }
+        }
+    }
+
+    proc K::isolation_decision_token(source_tenant_id: UInt64, target_tenant_id: UInt64, runtime_domain: UInt64, decision_status: UInt32, logical_time: UInt64) {
+        if logical_time == 0 {
+            return 0;
+        } else {
+            let domain_valid = XdvCloudRuntimeContracts::K::is_domain_valid(runtime_domain);
+            if domain_valid == STATUS_OK {
+                return (logical_time * 1000000000) + (source_tenant_id * 1000000) + (target_tenant_id * 1000) + (runtime_domain * 10) + decision_status;
+            } else {
+                return 0;
+            }
+        }
+    }
+}
